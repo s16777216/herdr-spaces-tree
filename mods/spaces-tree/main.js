@@ -24,7 +24,7 @@ function place(s, ps) {
 }
 const rowHeight = ({ tree }) => (tree ? 28 : 31);
 const RAIL_CELL = 32;
-const railCell = (el) => h_flex().flex_none().justify_center().child(el);
+const railCell = (el) => h_flex().flex_none().w_full().child(el);
 const where = (s, ps) => JSON.stringify([s.machine ?? null, place(s, ps)]);
 const base = (path) => path.replace(/\/+$/, "").split("/").pop();
 // Changes made outside Herdr (an editor's save, a commit in another app): looked
@@ -771,7 +771,7 @@ export default class Spaces extends View {
       const icon = svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none();
       const badge = div().absolute().right(-3).bottom(-2).size(6).rounded(3).border_1().border_color(t.chrome).bg(connected ? t.ansi2 : t.dim);
       const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().px(collapsed ? 0 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
-        .when(collapsed, el => el.mt(4).w(RAIL_CELL).justify_center().rounded(6).tooltip(m ? `${m} · ${connected ? "connected" : (machine?.state ?? "asleep").replace(/_/g, " ")}` : "This computer"))
+        .when(collapsed, el => el.mt(4).pl(6).justify_start().rounded(6).tooltip(m ? `${m} · ${connected ? "connected" : (machine?.state ?? "asleep").replace(/_/g, " ")}` : "This computer"))
         .cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => {
           folded ? this.folded.delete(m) : this.folded.add(m);
@@ -796,7 +796,7 @@ export default class Spaces extends View {
       const empty = h_flex().id(`machine-new-${m ?? "local"}`).h(28).flex_none().px(collapsed ? 0 : 8).gap(7).items_center().rounded(7)
         .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
         .on_click(() => run("space.new", { machine: m ?? "" }))
-        .when(collapsed, el => el.w(RAIL_CELL).rounded(6).justify_center().tooltip(`New space on ${m ?? "this computer"}`)
+        .when(collapsed, el => el.pl(6).rounded(6).justify_start().tooltip(`New space on ${m ?? "this computer"}`)
           .child(h_flex().size(18).rounded(5).border_1().border_color(t.dim).items_center().justify_center()
             .child(svg("mods/workspace-chrome/plus.svg").size(10))))
         .when(!collapsed, el => el.child(svg("mods/workspace-chrome/plus.svg").size(12)).child("New space there"));
@@ -939,49 +939,57 @@ export default class Spaces extends View {
       h_flex()
         .id(`space-${w.id}`)
         .relative()
-        .w(RAIL_CELL)
+        .w_full()
         .h(32)
         .my(2)
-        .rounded(8)
-        .justify_center()
+        .pl(6)
         .items_center()
         .cursor_pointer()
         .tooltip(tooltipText)
-        .when(on, el => el.bg(t.selected))
-        .when(!on, el => el.hover(s => s.bg(t.hover)))
+        .when(on, el => el.bg(t.selected).rounded_l(6))
+        .when(!on, el => el.hover(s => s.bg(t.hover).rounded_l(6)))
         .on_click(() => run("space.select", { id: w.id }))
         .on_mouse_down("right", () => this.menu(w))
-        // Left active indicator pill
-        .when(on, el => el.child(
-          div().absolute().left(1).w(2.5).h(14).rounded(1.5).bg(t.accent)
-        ))
-        // Space colored avatar box
+        // Avatar wrapper sized 26x26 (center is at 6 + 13 = 19px, aligning with toggle & plus buttons)
         .child(
-          h_flex()
-            .size(20)
-            .rounded(6)
-            .bg(fill)
+          div()
+            .relative()
+            .size(26)
+            .flex()
             .items_center()
             .justify_center()
-            .text_size(10.5)
-            .font_bold()
-            .text_color("#ffffff")
-            .child(letter)
+            // Colored Space Avatar Box (20x20)
+            .child(
+              h_flex()
+                .size(20)
+                .rounded(6)
+                .bg(fill)
+                .items_center()
+                .justify_center()
+                .text_size(10.5)
+                .font_bold()
+                .text_color("#ffffff")
+                .child(letter)
+            )
+            // Top-right working spinner or blocked indicator
+            .when(hasWorking, el => el.child(
+              svg("mods/workspace-chrome/spinner.svg").size(10).text_color(t.working).spin(900)
+                .absolute().top(-1).right(-1)
+            ))
+            .when(!hasWorking && hasBlocked, el => el.child(
+              div().size(6).rounded(3).bg(t.blocked).border_1().border_color(t.chrome)
+                .absolute().top(0).right(0)
+            ))
+            // Bottom-right agent count badge
+            .when(totalAgents > 0, el => el.child(
+              div().absolute().bottom(-1).right(-1).size(12).rounded(6).bg(t.chrome).border_1().border_color(t.border)
+                .flex().items_center().justify_center()
+                .child(div().text_size(8.5).font_semibold().text_color(t.dim).child(String(totalAgents)))
+            ))
         )
-        // Top-right working spinner or blocked indicator
-        .when(hasWorking, el => el.child(
-          svg("mods/workspace-chrome/spinner.svg").size(10).text_color(t.working).spin(900)
-            .absolute().top(1).right(1)
-        ))
-        .when(!hasWorking && hasBlocked, el => el.child(
-          div().size(6).rounded(3).bg(t.blocked).border_1().border_color(t.chrome)
-            .absolute().top(2).right(2)
-        ))
-        // Bottom-right agent count badge
-        .when(totalAgents > 0, el => el.child(
-          div().absolute().bottom(1).right(1).size(12).rounded(6).bg(t.chrome).border_1().border_color(t.border)
-            .flex().items_center().justify_center()
-            .child(div().text_size(8.5).font_semibold().text_color(t.dim).child(String(totalAgents)))
+        // Right active indicator pill (resting at the right edge touching the workspace)
+        .when(on, el => el.child(
+          div().absolute().right(0).w(3).h(16).rounded_l(2).bg(t.accent)
         ))
     );
   }
@@ -1007,8 +1015,8 @@ export default class Spaces extends View {
     }
     if (changed) setShared("space.colors", kept);
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
-      .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
-        .when(collapsed, el => el.pl(0).pr(0).justify_center())
+      .child(h_flex().h(31).pl(collapsed ? 6 : 16).pr(collapsed ? 0 : 10).items_center().justify_between().text_size(11.5).text_color(t.dim)
+        .when(collapsed, el => el.justify_start())
         .when(!collapsed, el => el.child("Spaces"))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
           .tooltip("New space")
