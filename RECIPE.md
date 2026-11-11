@@ -32,6 +32,12 @@ The mod suite occupies the sidebar slot (`slot: "spaces"`, default width 240px, 
    - Tab header dropdown providing quick access to:
      - **接續對話 (Resume)**: Launches `claude --resume <id>` / `claude --continue` or `agy --conversation <id>` / `agy --continue`.
      - **開立新對話 (New Conversation)**: Starts a fresh agent session.
+6. **Collapsed Rail Mode (Dock View)**:
+   - Activates when the sidebar width is < 160px (typically 44px).
+   - Space Avatars: 20x20px colored avatar boxes (`rounded(6)`) centered inside 26x26px hitboxes.
+   - Alignment: Left margin set to `pl(6)` so every avatar, action button (`+`), and top collapse toggle share the exact same vertical center line (X = 19px).
+   - Right Active Indicator: Vertical accent capsule (`w: 3px, h: 16px, rounded_l(2)`) pinned to `right: 0`, visually anchoring the active space to the workspace canvas.
+   - Dynamic Badges: Working spinner at top-right, blocked dot, and agent count badge (`rounded(6)`) at bottom-right with cutout background.
 
 ## How it behaves
 

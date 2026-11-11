@@ -26,6 +26,12 @@ Organize your workspaces and AI coding agents (**Claude Code**, **Antigravity / 
 - **🏷️ Capsule Counters & Refined Metrics**:
   - Spaces display a subtle capsule badge (`rounded(9)`, height `18px`) showing the number of active/recent sessions.
   - Pixel-perfect row heights (Space `31px`, Agent `27px`) aligned with Herdr native typography.
+- **🗂️ Refined Collapsed Rail Mode (Dock View)**:
+  - When the sidebar is narrowed or collapsed into a slim rail (e.g. 44px), it transforms into a modern icon dock.
+  - Replaces bare numbers with colorful Space avatar badges (`[2]`, `[P]`, `[長]`, `[H]`, `[C]`).
+  - Pixel-perfect vertical alignment with top toggle and action buttons (`pl(6)`).
+  - Floating status indicators: live spinner for `working`, red dot for `blocked`, and agent count badges.
+  - Active space is marked by an anchor indicator pill on the **right edge**, seamlessly connecting into the active editor canvas.
 - **👻 Ghost Session Elimination**:
   - Live synchronization with `space.tabs` prevents stale or duplicate sessions from lingering when tabs are closed.
 - **🧩 Companion Mod: `agent-tab-menu`**:
