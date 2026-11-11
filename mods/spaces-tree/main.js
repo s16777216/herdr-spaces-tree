@@ -910,20 +910,80 @@ export default class Spaces extends View {
       );
   }
 
-  compact({ w, i }, t) {
-    return railCell(h_flex()
-      .id(`space-${w.id}`)
-      .relative()
-      .w(RAIL_CELL)
-      .h(26)
-      .rounded(6)
-      .justify_center()
-      .items_center()
-      .when(w.active, (el) => el.bg(t.selected))
-      .when(!w.active, (el) => el.hover((s) => s.bg(t.hover)))
-      .on_click(() => run("space.select", { id: w.id }))
-      .child(div().text_color(w.active ? t.foreground : t.muted).child(String(i + 1)))
-      .child(div().absolute().right(5).text_color(tone(t, w.status)).child(glyph(w.status))));
+  compact(r, t) {
+    const { w, i, g } = r;
+    const on = w.active;
+    const colors = shared("space.colors") ?? {};
+    const color = colors[w.id] ?? "ansi6";
+    const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
+    const letter = [...w.name][0]?.toUpperCase() ?? "?";
+
+    const live = (this.liveAgents ?? []).filter(a => a.space === w.id);
+    const liveTabKeys = new Set(live.map(a => `${a.space}::${a.tab}`));
+    const validTabIds = new Set((w.tabs ?? []).map(tab => tab.id));
+    const dormant = Object.values(this.cachedSessions ?? {}).filter(s =>
+      s.space === w.id && validTabIds.has(s.tab) && !liveTabKeys.has(s.key)
+    );
+    const totalAgents = live.length + dormant.length;
+    const hasBlocked = live.some(a => a.status === "blocked");
+    const hasWorking = live.some(a => a.status === "working");
+
+    const branch = g?.branch || w.branch;
+    const tooltipText = [
+      w.name,
+      branch ? `(${branch})` : null,
+      totalAgents > 0 ? `${totalAgents} agent${totalAgents > 1 ? "s" : ""}${hasWorking ? " · working" : hasBlocked ? " · blocked" : ""}` : null
+    ].filter(Boolean).join(" · ");
+
+    return railCell(
+      h_flex()
+        .id(`space-${w.id}`)
+        .relative()
+        .w(RAIL_CELL)
+        .h(32)
+        .my(2)
+        .rounded(8)
+        .justify_center()
+        .items_center()
+        .cursor_pointer()
+        .tooltip(tooltipText)
+        .when(on, el => el.bg(t.selected))
+        .when(!on, el => el.hover(s => s.bg(t.hover)))
+        .on_click(() => run("space.select", { id: w.id }))
+        .on_mouse_down("right", () => this.menu(w))
+        // Left active indicator pill
+        .when(on, el => el.child(
+          div().absolute().left(1).w(2.5).h(14).rounded(1.5).bg(t.accent)
+        ))
+        // Space colored avatar box
+        .child(
+          h_flex()
+            .size(20)
+            .rounded(6)
+            .bg(fill)
+            .items_center()
+            .justify_center()
+            .text_size(10.5)
+            .font_bold()
+            .text_color("#ffffff")
+            .child(letter)
+        )
+        // Top-right working spinner or blocked indicator
+        .when(hasWorking, el => el.child(
+          svg("mods/workspace-chrome/spinner.svg").size(10).text_color(t.working).spin(900)
+            .absolute().top(1).right(1)
+        ))
+        .when(!hasWorking && hasBlocked, el => el.child(
+          div().size(6).rounded(3).bg(t.blocked).border_1().border_color(t.chrome)
+            .absolute().top(2).right(2)
+        ))
+        // Bottom-right agent count badge
+        .when(totalAgents > 0, el => el.child(
+          div().absolute().bottom(1).right(1).size(12).rounded(6).bg(t.chrome).border_1().border_color(t.border)
+            .flex().items_center().justify_center()
+            .child(div().text_size(8.5).font_semibold().text_color(t.dim).child(String(totalAgents)))
+        ))
+    );
   }
 
   render(cx) {
@@ -951,6 +1011,7 @@ export default class Spaces extends View {
         .when(collapsed, el => el.pl(0).pr(0).justify_center())
         .when(!collapsed, el => el.child("Spaces"))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
+          .tooltip("New space")
           .on_click(() => run("space.new")).child(svg("mods/workspace-chrome/plus.svg").size(14))))
       .child(v_flex().flex_1().min_h(0).px(collapsed ? 0 : 8).pb(14).overflow_y_scrollbar().mode("always")
         .on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })
