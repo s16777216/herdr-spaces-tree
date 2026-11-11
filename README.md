@@ -14,6 +14,11 @@ Organize your workspaces and AI coding agents (**Claude Code**, **Antigravity / 
   - Automatically nests running and dormant agents under their owning workspace Space.
   - Smooth curved rounded-corner tree guide rails (`╰─`) connecting Spaces to Agents with zero visual clutter.
   - Expand / collapse per space with smooth state retention.
+- **🤖 Deep Sub-agent Hierarchy Support**:
+  - Automatically discovers and displays background worker sub-agents spawned via `hc run`.
+  - Forms an elegant three-tier tree: **Space → Primary Agent → Sub-agent** with multi-level curved guide rails.
+  - Interactive controls: left-click to focus pane or peek live terminal (`terminal.peek`), right-click to keep as tab pane (`terminal.keep`) or terminate (`terminal.kill`).
+  - Real-time status indicators (working spinner, blocked alerts, idle dots) for background workers.
 - **⚡ Smart Conversation Resumption (`Resume` / `Click-to-Wake`)**:
   - Distinguishes between **Active Running Agents** (solid status indicators) and **Dormant Sessions** (dimmed text when CLI exits back to shell).
   - Clicking a dormant session intelligently wakes it up by resuming the conversation:

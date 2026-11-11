@@ -53,6 +53,43 @@ export default class AgentTabMenu extends View {
 
   items() {
     const p = props() ?? {};
+    if (p.type === "subagent") {
+      return [
+        {
+          label: "窺視終端 (Peek)",
+          icon: "mods/workspace-chrome/terminal.svg",
+          action: () => {
+            if (p.terminal) run("terminal.peek", { terminal: p.terminal });
+          }
+        },
+        {
+          label: "固定為窗格 (Keep as Pane)",
+          icon: "mods/workspace-chrome/square-pen.svg",
+          action: () => {
+            if (p.terminal) run("terminal.keep", { terminal: p.terminal });
+          }
+        },
+        {
+          label: "複製終端代號",
+          icon: "mods/git/icons/copy.svg",
+          hint: p.terminal,
+          action: (cx) => {
+            if (p.terminal) {
+              cx.write_to_clipboard(p.terminal);
+              notify({ title: "已複製終端代號", body: p.terminal });
+            }
+          }
+        },
+        {
+          label: "終止子代理 (Kill)",
+          icon: "mods/workspace-chrome/x.svg",
+          danger: true,
+          action: () => {
+            if (p.terminal) run("terminal.kill", { terminal: p.terminal });
+          }
+        }
+      ];
+    }
     if (p.type === "dormant") {
       const launchHelper = async (mode) => {
         if (p.spaceId) run("space.select", { id: p.spaceId });

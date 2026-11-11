@@ -28,11 +28,17 @@ The mod suite occupies the sidebar slot (`slot: "spaces"`, default width 240px, 
    - Status indicators:
      - **Live Running Agent**: Bright white text (`theme().foreground`) and solid colored status dot (`working`, `idle`, `blocked`).
      - **Dormant Session**: Dimmed text (`theme().dim`) indicating the agent CLI exited back to shell.
-5. **Companion Mod: `agent-tab-menu`**:
+5. **Sub-agent Rows (Height 25px, nested under Primary Agent)**:
+   - Second-tier curved guide rails branching from parent agent (left(28)).
+   - Discovers background worker subagents spawned via hc run (k.parent === parentAddress).
+   - Dedicated sub tag, task brief name, and live status (working spinner / idle dot).
+   - Left-click to focus pane or peek live output overlay (	erminal.peek).
+   - Right-click for Sub-agent Menu: Peek, Keep as Pane (	erminal.keep), Copy Address, or Kill (	erminal.kill).
+6. **Companion Mod: gent-tab-menu**:
    - Tab header dropdown providing quick access to:
      - **接續對話 (Resume)**: Launches `claude --resume <id>` / `claude --continue` or `agy --conversation <id>` / `agy --continue`.
      - **開立新對話 (New Conversation)**: Starts a fresh agent session.
-6. **Collapsed Rail Mode (Dock View)**:
+7. **Collapsed Rail Mode (Dock View)**:
    - Activates when the sidebar width is < 160px (typically 44px).
    - Space Avatars: 20x20px colored avatar boxes (`rounded(6)`) centered inside 26x26px hitboxes.
    - Alignment: Left margin set to `pl(6)` so every avatar, action button (`+`), and top collapse toggle share the exact same vertical center line (X = 19px).

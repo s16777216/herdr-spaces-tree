@@ -177,6 +177,11 @@ function agentStatus(t, status, compact = false) {
   return div().size(7).mx(3).flex_none().rounded(4).bg(status === "done" ? color : t.dim + "00");
 }
 
+function kidStatus(k, listed) {
+  const s = listed?.get?.(k.address) ?? k.status;
+  return s === "error" ? "blocked" : s === "done" ? "idle" : (s || "idle");
+}
+
 export default class Spaces extends View {
   init(_props, cx) {
     this.git = {}; // where() -> { name, branch, ahead, behind, repo, linked }, null: not a repo
@@ -284,6 +289,19 @@ export default class Spaces extends View {
     return sessions;
   }
 
+  getSubAgents(parentAddr) {
+    if (!parentAddr) return [];
+    const all = this.allTerms ?? [];
+    const kids = all.filter(k => k.parent === parentAddr && k.state === "live");
+    return kids.flatMap((k, i) => {
+      const isLastKid = i === kids.length - 1;
+      return [
+        { k, isLastKid },
+        ...this.getSubAgents(k.address)
+      ];
+    });
+  }
+
   spaceAgentRows(space, t) {
     const live = (this.liveAgents ?? []).filter(a => a.space === space.id);
     const liveTabKeys = new Set(live.map(a => `${a.space}::${a.tab}`));
@@ -305,15 +323,21 @@ export default class Spaces extends View {
     ];
     const total = all.length;
 
-    return all.map((item, idx) => {
+    return all.flatMap((item, idx) => {
       const isLast = idx === total - 1;
-      return item.type === "live"
-        ? this.liveAgentRow(item.a, t, isLast)
-        : this.dormantSessionRow(item.s, t, now, isLast);
+      if (item.type === "dormant") {
+        return [this.dormantSessionRow(item.s, t, now, isLast)];
+      }
+      const kids = this.getSubAgents(item.a.address);
+      const parentRow = this.liveAgentRow(item.a, t, isLast, kids.length > 0);
+      const kidRows = kids.map((kidItem) =>
+        this.subAgentRow(kidItem.k, t, isLast, kidItem.isLastKid)
+      );
+      return [parentRow, ...kidRows];
     });
   }
 
-  liveAgentRow(a, t, isLast = false) {
+  liveAgentRow(a, t, isLast = false, hasKids = false) {
     const space = (spaces() ?? []).find(s => s.id === a.space);
     const tabInfo = (space?.tabs ?? []).find(tab => tab.id === a.tab);
     const term = this.terminalsMap?.get(a.address);
@@ -364,6 +388,16 @@ export default class Spaces extends View {
           .w(1.5)
           .bg(t.input ?? (t.border + "66"))
       ))
+      // Vertical rail branch down to sub-agents
+      .when(hasKids, el => el.child(
+        div()
+          .absolute()
+          .left(28)
+          .top(13.5)
+          .bottom(0)
+          .w(1.5)
+          .bg(t.input ?? (t.border + "66"))
+      ))
       .child(pic)
       .child(
         div()
@@ -376,6 +410,109 @@ export default class Spaces extends View {
           .child(displayName)
       )
       .child(agentStatus(t, a.status));
+  }
+
+  subAgentRow(k, t, isParentLast, isLastKid) {
+    const st = kidStatus(k, this.listedMap);
+    const pic = icon(k.program, 12, t.foreground) || svg("mods/workspace-chrome/terminal.svg").size(12).flex_none().text_color(t.dim);
+    const name = k.name || k.template || k.program?.name || k.address;
+    const hasPane = this.listedMap?.has(k.address);
+    const railColor = t.input ?? (t.border + "66");
+
+    return h_flex()
+      .relative()
+      .id(`sub-ag-${k.address}`)
+      .h(25)
+      .pl(44)
+      .pr(8)
+      .gap(6)
+      .flex_none()
+      .items_center()
+      .rounded(6)
+      .cursor_pointer()
+      .hover(s => s.bg(t.hover))
+      .on_click(() => {
+        if (hasPane) run("pane.focus", { terminal: k.address });
+        else run("terminal.peek", { terminal: k.address });
+      })
+      .on_mouse_down("right", (_e, cx) => {
+        _e.stop_propagation?.();
+        this.openSubAgentMenu(k, name, hasPane);
+      })
+      // Tree Rail: If parent is not the last primary item, outer line at left(16) passes through
+      .when(!isParentLast, el => el.child(
+        div()
+          .absolute()
+          .left(16)
+          .top(0)
+          .bottom(0)
+          .w(1.5)
+          .bg(railColor)
+      ))
+      // Tree Rail: Curved branch from parent at left(28)
+      .child(
+        div()
+          .absolute()
+          .left(28)
+          .top(0)
+          .w(10)
+          .h(13)
+          .border_l(1.5)
+          .border_b(1.5)
+          .border_color(railColor)
+          .rounded_bl(6)
+      )
+      // Tree Rail: Continue vertical line to next kid if not last kid
+      .when(!isLastKid, el => el.child(
+        div()
+          .absolute()
+          .left(28)
+          .top(12.5)
+          .bottom(0)
+          .w(1.5)
+          .bg(railColor)
+      ))
+      .child(pic)
+      .child(
+        div()
+          .flex_1()
+          .min_w(0)
+          .truncate()
+          .text_size(11)
+          .text_color(t.dim ?? t.muted)
+          .child(name)
+      )
+      .child(
+        div()
+          .flex_none()
+          .px(4)
+          .h(14)
+          .rounded(3)
+          .bg(t.input ?? (t.border + "44"))
+          .text_size(9)
+          .font_semibold()
+          .text_color(t.muted)
+          .flex()
+          .items_center()
+          .justify_center()
+          .child("sub")
+      )
+      .child(agentStatus(t, st));
+  }
+
+  openSubAgentMenu(k, name, hasPane) {
+    openOverlay({
+      mod: "agent-tab-menu",
+      kind: "popup",
+      width: 195,
+      height: 135,
+      props: {
+        type: "subagent",
+        terminal: k.address,
+        title: name,
+        hasPane
+      }
+    });
   }
 
   async wakeDormantSession(s, mode = "resume") {
@@ -998,8 +1135,10 @@ export default class Spaces extends View {
     const t = theme();
     const collapsed = narrow();
     const allTerms = terminals() ?? [];
+    this.allTerms = allTerms;
     this.terminalsMap = new Map(allTerms.map(t => [t.address, t]));
     this.liveAgents = agents() ?? [];
+    this.listedMap = new Map((this.liveAgents ?? []).map(a => [a.address, a.status]));
     this.cachedSessions = this.syncSessions(this.liveAgents, allTerms);
 
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
