@@ -2,7 +2,7 @@
 // stable colored avatars, worktrees, git status, and Provider + Session ID tracking.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, machines, panes, agents, terminals, run, openOverlay, exec, hc, notify, theme, shared, setShared, watchFolder, window, layout } from "herdr";
+import { spaces, machines, panes, agents, terminals, run, openOverlay, exec, hc, notify, theme, shared, setShared, watchFolder, window, layout, home, readTextFile } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -92,6 +92,67 @@ function isAgent(agent, term) {
   return false;
 }
 
+function findLastMatchingJsonl(text, keyName, matchVal, targetField) {
+  if (!text) return null;
+  const chunk = text.length > 80000 ? text.slice(-80000) : text;
+  const lines = chunk.split("\n");
+  const normMatch = matchVal ? matchVal.toLowerCase().replace(/\\/g, "/").replace(/\/+$/, "") : "";
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    try {
+      const obj = JSON.parse(line);
+      const val = obj[keyName];
+      if (val) {
+        const normVal = String(val).toLowerCase().replace(/\\/g, "/").replace(/\/+$/, "");
+        if (normVal === normMatch || normVal.endsWith(normMatch) || normMatch.endsWith(normVal)) {
+          return obj[targetField] || null;
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
+async function resolveRealSessionId(progKey, cwd, title) {
+  const key = (progKey || "").toLowerCase();
+  const h = home();
+  try {
+    if (key === "antigravity" || key === "agy") {
+      const text = await readTextFile(`${h}/.gemini/antigravity-cli/history.jsonl`).catch(() => null);
+      const id = findLastMatchingJsonl(text, "workspace", cwd, "conversationId");
+      if (id) return id;
+    }
+    if (key === "claude" || key === "claude-code") {
+      const text = await readTextFile(`${h}/.claude/history.jsonl`).catch(() => null);
+      const id = findLastMatchingJsonl(text, "project", cwd, "sessionId");
+      if (id) return id;
+    }
+    if (key === "codex") {
+      const text = await readTextFile(`${h}/.codex/session_index.jsonl`).catch(() => null);
+      if (text) {
+        const chunk = text.length > 50000 ? text.slice(-50000) : text;
+        const lines = chunk.trim().split("\n");
+        const normTitle = title ? title.toLowerCase() : "";
+        let newestId = null;
+        for (let i = lines.length - 1; i >= 0; i--) {
+          try {
+            const obj = JSON.parse(lines[i]);
+            if (obj.id) {
+              if (!newestId) newestId = obj.id;
+              if (normTitle && obj.thread_name && normTitle.includes(obj.thread_name.toLowerCase())) {
+                return obj.id;
+              }
+            }
+          } catch {}
+        }
+        if (newestId) return newestId;
+      }
+    }
+  } catch {}
+  return null;
+}
+
 function buildAgentLaunch(program, session, mode = "resume") {
   const key = (program?.key || "").toLowerCase();
   let baseCmd = key || "claude";
@@ -103,21 +164,35 @@ function buildAgentLaunch(program, session, mode = "resume") {
   }
 
   // mode === "resume"
+  const sid = session?.sessionId;
+  const isRealId = sid && (sid.includes("-") || sid.length >= 16);
+
   if (baseCmd === "claude") {
-    const sid = session?.sessionId;
-    const hasFullUuid = sid && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid);
-    if (hasFullUuid) {
+    if (isRealId) {
       return { cmd: `claude --resume ${sid}`, argv: ["claude", "--resume", sid] };
     }
     return { cmd: "claude --continue", argv: ["claude", "--continue"] };
   }
 
   if (baseCmd === "agy") {
-    const sid = session?.sessionId;
-    if (sid && (sid.includes("-") || sid.length >= 16)) {
+    if (isRealId) {
       return { cmd: `agy --conversation ${sid}`, argv: ["agy", "--conversation", sid] };
     }
     return { cmd: "agy --continue", argv: ["agy", "--continue"] };
+  }
+
+  if (baseCmd === "codex") {
+    if (isRealId) {
+      return { cmd: `codex resume ${sid}`, argv: ["codex", "resume", sid] };
+    }
+    return { cmd: "codex resume --last", argv: ["codex", "resume", "--last"] };
+  }
+
+  if (baseCmd === "pi") {
+    if (isRealId) {
+      return { cmd: `pi --session ${sid}`, argv: ["pi", "--session", sid] };
+    }
+    return { cmd: "pi", argv: ["pi"] };
   }
 
   return { cmd: `${baseCmd} --continue`, argv: [baseCmd, "--continue"] };
@@ -203,11 +278,38 @@ export default class Spaces extends View {
     for (const state of Object.values(this.reconnecting)) state.busy = false;
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
     this.agentsFolded = new Set(JSON.parse(localStorage.getItem("spaces.agents_folded") ?? "[]"));
+    this.realSessionIds = new Map();
+    this.resolveAllSessions(cx);
+    cx.timer.every(10000, cx => this.resolveAllSessions(cx));
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // `git status` walks the whole tree, on another machine a process there:
     // only when its answer could have changed (see `due`).
     cx.timer.every(250, (cx) => this.checkNew(cx));
+  }
+
+  resolveAllSessions(cx) {
+    cx.spawn(async (cx) => {
+      const sessions = this.loadSessions();
+      let dirty = false;
+      for (const [k, s] of Object.entries(sessions)) {
+        if (!s.sessionId || (!s.sessionId.includes("-") && s.sessionId.length < 16)) {
+          const realId = await resolveRealSessionId(s.program?.key, s.cwd, s.displayName || s.title);
+          if (realId) {
+            s.sessionId = realId;
+            s.shortTag = realId.slice(0, 7);
+            if (s.cwd) this.realSessionIds.set(s.cwd, realId);
+            dirty = true;
+          }
+        } else if (s.cwd && s.sessionId) {
+          this.realSessionIds.set(s.cwd, s.sessionId);
+        }
+      }
+      if (dirty) {
+        this.saveSessions(sessions);
+        cx.notify();
+      }
+    });
   }
 
   loadSessions() {
@@ -243,7 +345,13 @@ export default class Spaces extends View {
       const term = terminalMap.get(a.address);
       if (!isAgent(a, term)) continue;
 
-      const sessionId = extractSessionId(a, term);
+      let sessionId = extractSessionId(a, term);
+      if ((!sessionId.includes("-") && sessionId.length < 16) && term?.cwd) {
+        const cached = this.realSessionIds?.get(term.cwd);
+        if (cached) sessionId = cached;
+      }
+      const hasRealUuid = sessionId && (sessionId.includes("-") || sessionId.length >= 16);
+      const shortTag = hasRealUuid ? sessionId.slice(0, 7) : "";
       const key = `${a.space}::${a.tab}`;
       const space = (spaces() ?? []).find(s => s.id === a.space);
       const tabInfo = (space?.tabs ?? []).find(tab => tab.id === a.tab);
@@ -254,7 +362,7 @@ export default class Spaces extends View {
       sessions[key] = {
         key,
         sessionId,
-        shortTag: sessionId.length > 8 ? sessionId.slice(0, 7) : sessionId,
+        shortTag,
         program: a.program,
         displayName,
         tabName: tabInfo?.name ?? a.tab_name ?? null,
@@ -521,6 +629,20 @@ export default class Spaces extends View {
     }
     if (s.tab) {
       run("tab.select", { id: s.tab });
+    }
+
+    if (mode === "resume" && (!s.sessionId || (!s.sessionId.includes("-") && s.sessionId.length < 16))) {
+      const realId = await resolveRealSessionId(s.program?.key, s.cwd, s.displayName || s.title);
+      if (realId) {
+        s.sessionId = realId;
+        s.shortTag = realId.slice(0, 7);
+        const sessions = this.loadSessions();
+        if (sessions[s.key]) {
+          sessions[s.key].sessionId = realId;
+          sessions[s.key].shortTag = s.shortTag;
+          this.saveSessions(sessions);
+        }
+      }
     }
 
     const launch = buildAgentLaunch(s.program, s, mode);
