@@ -53,6 +53,22 @@ function cleanTitle(s) {
   return clean || "Session";
 }
 
+function isUsefulTaskTitle(title, progName) {
+  if (!title || title === "Interactive session" || title === "Session") return false;
+  if (progName && title.toLowerCase() === progName.toLowerCase()) return false;
+  // Pure directory path (e.g. C:\..., ~/..., /...)
+  if (/^([A-Za-z]:[\\/]|~[\\/]|\/)/.test(title)) return false;
+  // Default "<progName> <path>" window title
+  if (progName) {
+    const prefix = progName.toLowerCase();
+    const lower = title.toLowerCase();
+    if (lower.startsWith(prefix + " ") && /^([A-Za-z]:[\\/]|~[\\/]|\/)/.test(title.slice(progName.length + 1).trim())) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // The agent's icon from the app's program table: a one-color glyph or a picture.
 function icon(p, size, color) {
   if (!p?.icon) return null;
@@ -60,24 +76,23 @@ function icon(p, size, color) {
 }
 
 function smartAgentName(agent, tabInfo) {
-  // If tab is explicitly named by user (tab.named is true and name is set)
+  // 1. Agent task title first
+  const title = cleanTitle(agent.title);
+  const progName = agent.program?.name;
+  if (isUsefulTaskTitle(title, progName)) {
+    return title;
+  }
+  // 2. User-named tab
   if (tabInfo?.named && tabInfo.name) {
     return tabInfo.name;
   }
-  // Check agent / session title
-  const title = cleanTitle(agent.title);
-  const progName = agent.program?.name;
-  if (title && title !== "Interactive session" && title !== "Session" && title !== progName) {
-    return title;
-  }
-  // If tab has a name (e.g. "1")
-  if (tabInfo?.name) {
-    return `Tab ${tabInfo.name}`;
-  }
+  // 3. Program name or unnamed tab fallback
+  if (progName) return progName;
+  if (tabInfo?.name) return `Tab ${tabInfo.name}`;
   if (agent.tab_name) {
     return /^\d+$/.test(agent.tab_name) ? `Tab ${agent.tab_name}` : agent.tab_name;
   }
-  return title || progName || "Agent";
+  return title || "Agent";
 }
 
 function isAgent(agent, term) {
@@ -504,25 +519,6 @@ export default class Spaces extends View {
           .border_color(t.input ?? (t.border + "66"))
           .rounded_bl(6)
       )
-      .when(!isLast, el => el.child(
-        div()
-          .absolute()
-          .left(16)
-          .top(13.5)
-          .bottom(0)
-          .w(1.5)
-          .bg(t.input ?? (t.border + "66"))
-      ))
-      // Vertical rail branch down to sub-agents
-      .when(hasKids, el => el.child(
-        div()
-          .absolute()
-          .left(36)
-          .top(21)
-          .bottom(0)
-          .w(1.5)
-          .bg(t.input ?? (t.border + "66"))
-      ))
       .child(pic)
       .child(
         div()
@@ -574,19 +570,20 @@ export default class Spaces extends View {
           .w(1.5)
           .bg(railColor)
       ))
-      // Tree Rail: Curved branch from parent at left(36)
+      // Tree Rail: Curved branch from parent at left(36) (matches liveAgentRow +20px indent)
       .child(
         div()
           .absolute()
           .left(36)
           .top(0)
-          .w(10)
-          .h(13)
+          .w(11)
+          .h(14)
           .border_l(1.5)
           .border_b(1.5)
           .border_color(railColor)
           .rounded_bl(6)
       )
+
       .child(pic)
       .child(
         div()
@@ -702,15 +699,6 @@ export default class Spaces extends View {
           .border_color(t.input ?? (t.border + "66"))
           .rounded_bl(6)
       )
-      .when(!isLast, el => el.child(
-        div()
-          .absolute()
-          .left(16)
-          .top(13.5)
-          .bottom(0)
-          .w(1.5)
-          .bg(t.input ?? (t.border + "66"))
-      ))
       .child(pic)
       .child(
         div()
@@ -1136,14 +1124,15 @@ export default class Spaces extends View {
       .on_mouse_down("right", () => this.menu(w))
       .child(
         h_flex()
+          .min_w(0)
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
+          .child(div().min_w(0).truncate().text_color(t.foreground).child(w.name))
           .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
           .when(totalAgents > 0, el => el.child(
-            h_flex().gap(3).items_center().px(6).h(18).rounded(9).bg(t.raised)
+            h_flex().flex_none().gap(3).items_center().px(6).h(18).rounded(9).bg(t.raised)
               .cursor_pointer()
               .hover(s => s.bg(t.hover))
               .tooltip(`${totalAgents} agent session(s) (click to ${isFolded ? "expand" : "collapse"})`)
