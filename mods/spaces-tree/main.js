@@ -279,6 +279,7 @@ export default class Spaces extends View {
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
     this.agentsFolded = new Set(JSON.parse(localStorage.getItem("spaces.agents_folded") ?? "[]"));
     this.realSessionIds = new Map();
+    this.seenLiveKeys = new Set();
     this.resolveAllSessions(cx);
     cx.timer.every(10000, cx => this.resolveAllSessions(cx));
     this.refreshMachines(cx);
@@ -339,6 +340,7 @@ export default class Spaces extends View {
     const now = Date.now();
     const sessions = this.loadSessions();
     const terminalMap = new Map((allTerminals ?? []).map(t => [t.address, t]));
+    const currentLiveKeys = new Set();
     let dirty = false;
 
     for (const a of liveAgents ?? []) {
@@ -353,6 +355,8 @@ export default class Spaces extends View {
       const hasRealUuid = sessionId && (sessionId.includes("-") || sessionId.length >= 16);
       const shortTag = hasRealUuid ? sessionId.slice(0, 7) : "";
       const key = `${a.space}::${a.tab}`;
+      currentLiveKeys.add(key);
+      this.seenLiveKeys?.add(key);
       const space = (spaces() ?? []).find(s => s.id === a.space);
       const tabInfo = (space?.tabs ?? []).find(tab => tab.id === a.tab);
       const displayName = smartAgentName(a, tabInfo);
@@ -376,6 +380,19 @@ export default class Spaces extends View {
         lastSeen: now,
       };
       dirty = true;
+    }
+
+    // 若本輪執行期曾看過該 Agent 在線，之後從 liveAgents 消失（代表使用者主動 Exit），立即自快取中移除
+    if (this.seenLiveKeys) {
+      for (const seenKey of [...this.seenLiveKeys]) {
+        if (!currentLiveKeys.has(seenKey)) {
+          this.seenLiveKeys.delete(seenKey);
+          if (sessions[seenKey]) {
+            delete sessions[seenKey];
+            dirty = true;
+          }
+        }
+      }
     }
 
     const currentSpaces = spaces() ?? [];
